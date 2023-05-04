@@ -19,6 +19,26 @@ class ByteStream {
 
     bool _error{};  //!< Flag indicating that the stream suffered an error.
 
+    /*
+      用string对象设置一个环形队列，
+      buf_size为整个buffer的大小，即string的长度，
+      wpoiter指向下一个可写的位置，
+      rpointer指向下一个可读的位置，
+
+      buffer为空：rpointer == wpointer;
+      buffer已满：rpointer == (wpointer + 1) % buf_size;
+    */
+
+    std::string buffer;
+    size_t buf_size;
+    size_t rpointer;
+    size_t wpointer;
+    bool input_end_flag;
+
+    size_t read_count;
+    size_t write_count;
+    size_t unused_capacity;
+
   public:
     //! Construct a stream with room for `capacity` bytes.
     ByteStream(const size_t capacity);

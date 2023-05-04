@@ -17,8 +17,27 @@ void get_URL(const string &host, const string &path) {
     // (not just one call to read() -- everything) until you reach
     // the "eof" (end of file).
 
-    cerr << "Function called: get_URL(" << host << ", " << path << ").\n";
-    cerr << "Warning: get_URL() has not been implemented yet.\n";
+    TCPSocket sock;
+
+    // 连接到远端主机
+    sock.connect(Address(host, "http"));
+
+    // 构造http请求报文
+    string payload = "GET " + path + " HTTP/1.1" + "\r\n" + "Host: " + host + "\r\n" + "\r\n";
+    // 发送http报文
+    sock.write(payload);
+
+    // 关闭连接
+    sock.shutdown(SHUT_WR);
+
+    // 读出并打印接收到的响应报文
+    while (!sock.eof()) {
+        cout << sock.read();
+    }
+
+    // 没有实现具体的函数代码时默认的函数模板
+    // cerr << "Function called: get_URL(" << host << ", " << path << ").\n";
+    // cerr << "Warning: get_URL() has not been implemented yet.\n";
 }
 
 int main(int argc, char *argv[]) {
