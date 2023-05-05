@@ -6,6 +6,34 @@
 #include <cstdint>
 #include <string>
 
+// modern c++ 不让使用new和malloc
+// 需要使用stl里面的list容器来临时存储乱序的字节
+#include <list>
+
+class list_node {
+  private:
+    // data存储字节流
+    std::string data;
+
+    // index存储data的首字节对应的序号
+    uint64_t index;
+
+  public:
+    // 构造函数，初始化data和index
+    list_node(const std::string &d, const uint64_t i);
+
+    // 获取data
+    std::string &get_data();
+
+    // 获取index
+    uint64_t &get_index();
+
+    // 为了能够使用list的sort函数，需要重载小于号运算符
+    bool operator<(list_node another);
+};
+
+typedef std::list<list_node> UNASSEMBLED_LIST;
+
 //! \brief A class that assembles a series of excerpts from a byte stream (possibly out of order,
 //! possibly overlapping) into an in-order byte stream.
 class StreamReassembler {
@@ -14,6 +42,15 @@ class StreamReassembler {
 
     ByteStream _output;  //!< The reassembled in-order byte stream
     size_t _capacity;    //!< The maximum number of bytes
+
+    // 已存储但未进入字节流的数据包列表
+    UNASSEMBLED_LIST todo_list;
+
+    // 未进入字节流的字节数量总计
+    size_t todo_bytes;
+
+    // 输入方的eof标志
+    bool input_eof;
 
   public:
     //! \brief Construct a `StreamReassembler` that will store up to `capacity` bytes.
@@ -46,6 +83,11 @@ class StreamReassembler {
     //! \brief Is the internal state empty (other than the output stream)?
     //! \returns `true` if no substrings are waiting to be assembled
     bool empty() const;
+
+    // 向bytestream中写入data
+    bool write_to_bytestream(const std::string &data, const size_t &index);
+
+    bool processing_data(const std::string &data, const size_t &index);
 };
 
 #endif  // SPONGE_LIBSPONGE_STREAM_REASSEMBLER_HH

@@ -26,7 +26,6 @@ ByteStream::ByteStream(const size_t capacity)
 }
 
 size_t ByteStream::write(const string &data) {
-
     size_t count;
     size_t data_len = data.length();
 
@@ -47,7 +46,6 @@ size_t ByteStream::write(const string &data) {
 
 //! \param[in] len bytes will be copied from the output side of the buffer
 string ByteStream::peek_output(const size_t len) const {
-
     std::string res;
     size_t count;
 
@@ -79,7 +77,6 @@ void ByteStream::pop_output(const size_t len) {
 // 而是普通的全局函数read()
 // 导致编译出错
 std::string ByteStream::read(const size_t len) {
-
     std::string res = peek_output(len);
     size_t res_len = res.length();
     pop_output(res_len);
@@ -93,9 +90,7 @@ bool ByteStream::input_ended() const { return input_end_flag; }
 
 size_t ByteStream::buffer_size() const { return buf_size - 1 - unused_capacity; }
 
-bool ByteStream::buffer_empty() const {
-    return rpointer == wpointer;
-}
+bool ByteStream::buffer_empty() const { return rpointer == wpointer; }
 
 bool ByteStream::eof() const { return buffer_empty() && input_ended(); }
 
