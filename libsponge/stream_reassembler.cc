@@ -55,7 +55,7 @@ void StreamReassembler::push_substring(const string &data, const size_t index, c
     // 对于todo_list中的每一个node，都有可能发生上面的四种情况
     // 还需要结合bytestream的remaining_capacity进行判断，当剩余空间不足时，不再对后续的list_node进行操作
 
-    input_eof = eof;
+    input_eof = input_eof || eof;
 
     processing_data(data, index);
 
@@ -73,6 +73,7 @@ void StreamReassembler::push_substring(const string &data, const size_t index, c
         }
         list_node node = todo_list.front();
         todo_list.pop_front();
+        todo_bytes -= node.get_data().length();
         last_succeed = processing_data(node.get_data(), node.get_index());
     }
 }
