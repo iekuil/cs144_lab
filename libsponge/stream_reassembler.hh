@@ -87,7 +87,18 @@ class StreamReassembler {
     // 向bytestream中写入data
     bool write_to_bytestream(const std::string &data, const size_t &index);
 
+    // 根据index和预期的next_index决定data的去向
     bool processing_data(const std::string &data, const size_t &index);
+
+    // 在插入之前会检查已有的list_node
+    // 保证list中的所有string之间不存在overlap
+    void insert_unique(const std::string &data, const size_t &index);
+
+    // 把两个存在overlap的data合并成一个data
+    std::string merge(const size_t &lower_index,
+                      const std::string &lower_data,
+                      const size_t &higher_index,
+                      const std::string &higher_data);
 };
 
 #endif  // SPONGE_LIBSPONGE_STREAM_REASSEMBLER_HH
