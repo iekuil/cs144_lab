@@ -10,10 +10,65 @@ void DUMMY_CODE(Targs &&... /* unused */) {}
 
 using namespace std;
 
-void TCPReceiver::segment_received(const TCPSegment &seg) {
-    DUMMY_CODE(seg);
+bool TCPReceiver::segment_received(const TCPSegment &seg) { 
+    // syn、fin和data可能在同一个segment里面同时出现
+    bool syn = seg.header().syn;
+    bool fin = seg.header().fin;
+
+    // 得到当前seg中有效的sequence长度
+    // 之后用来计算absolutely sequence no
+    uint64_t seg_seq_len = seg.length_in_sequence_space();
+
+    size_t window = window_size();
+
+    // 首先检查initial_seqno，判断是否是一个新链接
+    if(!initial_seqno){
+        if(!syn){
+            return false;
+        }else{
+            WrappingInt32 ins(seg.header().seqno);
+            initial_seqno = ins;
+        }
+    }
+    uint64_t seg_seqno = unwrap(seg.header().seqno, *initial_seqno, abs_seqno);
+
+    // 4位头部长度（header length）：标识该TCP头部有多少个32bit字（4字节）。
+    // 4位最大能标识15，所以TCP头部最长是60字节。
+    // 这里的data_offset将以四字节为单位的doff换算成以字节为单位
+    size_t data_offset = (seg.header().doff - 5) * 4;
+
+    // 把option从payload中去掉，得到真正的data
+    std::string data = seg.payload().copy().substr(data_offset);
+    size_t data_len = data.length();
+
+    if(window == 0){
+        window = 1;
+    }
+
+    if(seg_seq_len == 0){
+        seg_seq_len = 1;
+    }
+
+    if((abs_seqno + window > seg_seqno) || (seg_seqno + data_len) > abs_seqno){
+        // 当前seg有落在window中的部分
+        _reassembler.push_substring(data, seg_seqno - nondata_counts, fin);
+
+        if(abs_seqno < seg_seqno + seg_seq_len && seg_seqno <= abs_seqno){
+
+            abs_seqno = seg_seqno + seg_seq_len;
+            nondata_counts += seg_seq_len - data_len;
+        }
+        return true;
+    }
+    return false;
 }
 
-optional<WrappingInt32> TCPReceiver::ackno() const { return {}; }
+std::optional<WrappingInt32> TCPReceiver::ackno() const {
+    if (initial_seqno) {
+        return wrap(abs_seqno, *initial_seqno);
+    } else {
+        return std::nullopt;
+    }
+}
 
-size_t TCPReceiver::window_size() const { return {}; }
+size_t TCPReceiver::window_size() const { return _reassembler.stream_out().remaining_capacity(); }

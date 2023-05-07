@@ -54,8 +54,8 @@ uint64_t unwrap(WrappingInt32 n, WrappingInt32 isn, uint64_t checkpoint) {
             // 这种情况是个例外，
             // 意味着checkpoint小于 1<<32，
             // 同时relative_n和checkpoint之间的距离又大于1<<31,
-            // 此时不应该向左折返，
-            // 需要向右
+            // 此时不能向左折返，
+            // 只能向右
             return checkpoint + relative_n.raw_value();
         }
         return checkpoint - static_cast<uint64_t>(-distance);

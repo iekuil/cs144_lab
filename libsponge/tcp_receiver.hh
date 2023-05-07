@@ -20,12 +20,23 @@ class TCPReceiver {
     //! The maximum number of bytes we'll store.
     size_t _capacity;
 
+    // 需要一个变量来记录ISN
+    std::optional<WrappingInt32> initial_seqno;
+
+    // 需要一个变量来记录absolutely sequence no
+    // 用来生成ack_no
+    uint64_t abs_seqno;
+
+    // 需要一个变量来记录abs_seqno有多少个计数不是由真正的data产生的
+    // 用于计算_reassemble.push_substring()需要的index
+    uint64_t nondata_counts;
+
   public:
     //! \brief Construct a TCP receiver
     //!
     //! \param capacity the maximum number of bytes that the receiver will
     //!                 store in its buffers at any give time.
-    TCPReceiver(const size_t capacity) : _reassembler(capacity), _capacity(capacity) {}
+    TCPReceiver(const size_t capacity) : _reassembler(capacity), _capacity(capacity), initial_seqno(std::nullopt), abs_seqno(0), nondata_counts(0) {}
 
     //! \name Accessors to provide feedback to the remote TCPSender
     //!@{
@@ -54,7 +65,7 @@ class TCPReceiver {
     size_t unassembled_bytes() const { return _reassembler.unassembled_bytes(); }
 
     //! \brief handle an inbound segment
-    void segment_received(const TCPSegment &seg);
+    bool segment_received(const TCPSegment &seg);
 
     //! \name "Output" interface for the reader
     //!@{
