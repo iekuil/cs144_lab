@@ -36,7 +36,8 @@ class TCPReceiver {
     //!
     //! \param capacity the maximum number of bytes that the receiver will
     //!                 store in its buffers at any give time.
-    TCPReceiver(const size_t capacity) : _reassembler(capacity), _capacity(capacity), initial_seqno(std::nullopt), abs_seqno(0), nondata_counts(0) {}
+    TCPReceiver(const size_t capacity)
+        : _reassembler(capacity), _capacity(capacity), initial_seqno(std::nullopt), abs_seqno(0), nondata_counts(0) {}
 
     //! \name Accessors to provide feedback to the remote TCPSender
     //!@{

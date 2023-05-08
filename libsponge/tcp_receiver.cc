@@ -10,7 +10,7 @@ void DUMMY_CODE(Targs &&... /* unused */) {}
 
 using namespace std;
 
-bool TCPReceiver::segment_received(const TCPSegment &seg) { 
+bool TCPReceiver::segment_received(const TCPSegment &seg) {
     // syn、fin和data可能在同一个segment里面同时出现
     bool syn = seg.header().syn;
     bool fin = seg.header().fin;
@@ -22,12 +22,13 @@ bool TCPReceiver::segment_received(const TCPSegment &seg) {
     size_t window = window_size();
 
     // 首先检查initial_seqno，判断是否是一个新链接
-    if(!initial_seqno){
-        if(!syn){
+    if (!initial_seqno) {
+        if (!syn) {
             return false;
-        }else{
+        } else {
             WrappingInt32 ins(seg.header().seqno);
             initial_seqno = ins;
+            abs_seqno = 1;
         }
     }
     uint64_t seg_seqno = unwrap(seg.header().seqno, *initial_seqno, abs_seqno);
@@ -41,22 +42,29 @@ bool TCPReceiver::segment_received(const TCPSegment &seg) {
     std::string data = seg.payload().copy().substr(data_offset);
     size_t data_len = data.length();
 
-    if(window == 0){
+    if (window == 0) {
         window = 1;
     }
 
-    if(seg_seq_len == 0){
+    if (seg_seq_len == 0) {
         seg_seq_len = 1;
     }
 
-    if((abs_seqno + window > seg_seqno) || (seg_seqno + data_len) > abs_seqno){
+    if ((abs_seqno + window > seg_seqno) || (seg_seqno + data_len) > abs_seqno) {
         // 当前seg有落在window中的部分
-        _reassembler.push_substring(data, seg_seqno - nondata_counts, fin);
+        // 在大多数情况下，index是seg_seqno - 1
+        // 当接收到的syn和data一起出现时，seg_seqno会算错index，得到一个负的index
+        // 因此需要seg_seqno - 1 + syn
+        _reassembler.push_substring(data, seg_seqno - 1 + syn, fin);
 
-        if(abs_seqno < seg_seqno + seg_seq_len && seg_seqno <= abs_seqno){
-
-            abs_seqno = seg_seqno + seg_seq_len;
-            nondata_counts += seg_seq_len - data_len;
+        // 实际上翻了实验手册之后发现压根就没提option字段和doff的事
+        // 实验手册中默认syn只在开头出现，fin只在结尾出现
+        // 并且不用管options字段
+        // 实验手册也只要求通过加一、减一来进行absolutely seqno和stream indices之间的换算
+        if (_reassembler.stream_out().input_ended()) {
+            abs_seqno = _reassembler.stream_out().bytes_written() + 2;
+        } else {
+            abs_seqno = _reassembler.stream_out().bytes_written() + 1;
         }
         return true;
     }
