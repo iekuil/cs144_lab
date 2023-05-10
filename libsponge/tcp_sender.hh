@@ -58,7 +58,7 @@ class TCPSender {
     // 记录接收方的窗口大小
     // 只会被fill_window()、ack_received()两个方法改变
     // 初始值应该为1
-    uint64_t _receiver_window_sz;
+    std::optional<uint64_t> _receiver_window_sz;
 
     // 重传倒计时
     std::optional<uint64_t> _countdown_timer;
@@ -68,6 +68,10 @@ class TCPSender {
 
     // 用于unwrap得到absolutely ackno
     uint64_t ack_checkpoint;
+
+    // 标志是否已经发送过fin flag
+    // 在发送fin flag后，阻止新的segment被发送
+    bool output_ended;
 
   public:
     //! Initialize a TCPSender

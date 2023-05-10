@@ -33,10 +33,11 @@ TCPSender::TCPSender(const size_t capacity, const uint16_t retx_timeout, const s
     , _outstanding_seg()
     , _consecutive_retransmissions(0)
     , _bytes_in_flight(0)
-    , _receiver_window_sz(0) 
+    , _receiver_window_sz(std::nullopt) 
     , _countdown_timer(std::nullopt)
     , _current_retransmission_timeout(retx_timeout) 
-    , ack_checkpoint(0) {}
+    , ack_checkpoint(0)
+    , output_ended(false) {}
 
 uint64_t TCPSender::bytes_in_flight() const { return _bytes_in_flight; }
 
@@ -55,7 +56,10 @@ void TCPSender::fill_window() {
     // 更新_next_seqno
     // 更新_bytes_in_flight
 
-    uint64_t window = _receiver_window_sz;
+    if(output_ended){
+        return;
+    }
+
     WrappingInt32 seqno = next_seqno();
 
     bool syn = 0;
@@ -65,20 +69,25 @@ void TCPSender::fill_window() {
         syn = 1;
     }
 
-    if(window == 0){
-        window = 1;
+    if(!_receiver_window_sz){
+        _receiver_window_sz = 1;
     }
 
-    uint64_t expected_payload_len = min(window - syn - 1, TCPConfig::MAX_PAYLOAD_SIZE);
+    if(*_receiver_window_sz == 0){
+        return;
+    }
+
+    uint64_t expected_payload_len = min(*_receiver_window_sz, TCPConfig::MAX_PAYLOAD_SIZE);
+
+    //cout<<"in fill_window: expected_len="<<expected_payload_len<<endl;
     string payload = _stream.read(expected_payload_len);
 
     if(_stream.eof()){
         fin = 1;
+        output_ended = true;
     }
 
     TCPSegment segment = make_segment(seqno, syn, fin, payload);
-
-    //cout<<"in fill_window(): seqno="<<_next_seqno<<", length="<< segment.length_in_sequence_space() << endl;
 
     if(segment.length_in_sequence_space() == 0){
         return;
@@ -87,9 +96,11 @@ void TCPSender::fill_window() {
     _segments_out.push(segment);
     _outstanding_seg.push(segment);
 
-    _receiver_window_sz -= segment.length_in_sequence_space();
+    _receiver_window_sz = *_receiver_window_sz - segment.length_in_sequence_space();
     _next_seqno += segment.length_in_sequence_space();
     _bytes_in_flight += segment.length_in_sequence_space();
+
+    //cout<<"isn="<<_isn.raw_value()<<", 发送seqno="<<segment.header().seqno<<endl;
 
     if(!_countdown_timer){
         _countdown_timer = _current_retransmission_timeout;
@@ -114,6 +125,8 @@ bool TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
 
     uint64_t abs_ackno = unwrap(ackno, _isn, ack_checkpoint);
 
+    bool reflash_timer_flag = false;
+
     if(abs_ackno > _next_seqno){
         return false;
     }
@@ -131,15 +144,25 @@ bool TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
         }
 
         _outstanding_seg.pop();
+        //cout<<"isn: "<<_isn.raw_value()<<"弹出 seqno: "<<segment.header().to_string() << endl;
         _bytes_in_flight -= segment.length_in_sequence_space();
+        reflash_timer_flag = 1;
     }
 
-    _current_retransmission_timeout = _initial_retransmission_timeout;
-    _countdown_timer = _current_retransmission_timeout;
-    _consecutive_retransmissions = 0;
+    //cout<<"isn="<<_isn.raw_value()<<", bytes in flight="<<_bytes_in_flight<<endl;
 
+    //cout<<"isn: "<<_isn.raw_value()<<"下一个outstanding: "<< _outstanding_seg.front().header().to_string() << endl;
+
+    if(reflash_timer_flag){
+        _current_retransmission_timeout = _initial_retransmission_timeout;
+        _countdown_timer = _current_retransmission_timeout;
+        _consecutive_retransmissions = 0;
+    }
+    
     _receiver_window_sz = window_size;
+    //cout<<"in ack_received, before fill_window: window sz="<< _receiver_window_sz << endl;
     fill_window();
+    //cout<<"in ack_received, after fill_window: window sz="<< _receiver_window_sz << endl;
 
     return true;
 }
@@ -155,6 +178,7 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
     //      若计时器没过期
     //          -> 更新计时器的剩余时间
 
+    //cout<<"isn: "<<_isn.raw_value()<<" 重传: ms="<<ms_since_last_tick<<endl;
     if(!_countdown_timer){
         _countdown_timer = _current_retransmission_timeout - ms_since_last_tick;
         return;
@@ -170,10 +194,15 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
     _countdown_timer = _current_retransmission_timeout;
 
     if(_outstanding_seg.empty()){
+        //cout<<"重传时遇到空队列, isn: "<<_isn.raw_value()<<endl;
         return;
     }
 
+    //cout<<"是不是没到这里, ms:"<<ms_since_last_tick<<endl;
+
     _segments_out.push(_outstanding_seg.front());
+
+    //cout<<"isn: "<<_isn.raw_value()<<" 重传:"<< _outstanding_seg.front().header().to_string() << endl;
     return;
 }
 
@@ -183,10 +212,12 @@ void TCPSender::send_empty_segment() {
     // 构造一个sequence space的长度为0的segment
     //      即：不包含syn、fin且payload长度为0的segment
     // 
+    if(output_ended){
+        return;
+    }
     std::string empty_string;
     TCPSegment empty_segment = make_segment(next_seqno(), 0, 0, empty_string);
     _segments_out.push(empty_segment);
-
 }
 
 TCPSegment TCPSender::make_segment(const WrappingInt32 &seqno, const bool &syn, const bool &fin, const std::string &payload) {
