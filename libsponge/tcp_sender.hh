@@ -73,6 +73,15 @@ class TCPSender {
     // 在发送fin flag后，阻止新的segment被发送
     bool output_ended;
 
+    // 上一次接收方窗口的右边界
+    // 用于ack_received()中判断是否打开了新的窗口
+    uint64_t last_recv_window_rboundary;
+
+    // 标记是否接收到一个window size为0的ack
+    // 用于重传计时器在到期时的行为选择
+    // （当window size为0时，不会增加“连续重传”计数，也不会让RTO翻倍）
+    bool ack_wdsz_zero_flag;
+
   public:
     //! Initialize a TCPSender
     TCPSender(const size_t capacity = TCPConfig::DEFAULT_CAPACITY,
