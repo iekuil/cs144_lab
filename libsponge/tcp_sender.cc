@@ -44,7 +44,7 @@ TCPSender::TCPSender(const size_t capacity, const uint16_t retx_timeout, const s
 uint64_t TCPSender::bytes_in_flight() const { return _bytes_in_flight; }
 
 void TCPSender::fill_window() {
-    // 大概是理解错了，这个fill_window不是发送单个的segment
+    // 之前大概是理解错了，这个fill_window不是发送单个的segment
     // 而是发送多个segment直到window清空
     //
     // 访问成员变量_receiver_window_sz获取接收方当前的窗口大小
@@ -60,14 +60,14 @@ void TCPSender::fill_window() {
     // 更新_receiver_window_sz
     // 更新_next_seqno
     // 更新_bytes_in_flight
-    //cout << "isn="<< _isn.raw_value() << "fill window"<< endl;
 
+    // 判断即将发送的segment是否超出接收方窗口的右边界
     if(_receiver_window_sz && (_next_seqno >= last_recv_window_rboundary)){
         return;
     }
 
+    // 用一个循环把整个窗口填满
     while(1){
-        
         if(output_ended){
             return;
         }
@@ -81,10 +81,18 @@ void TCPSender::fill_window() {
             syn = 1;
         }
 
+        // 在建立连接时，
+        // 还没有收到过ack，不知道具体的接收方窗口大小，
+        // 此时需要假设窗口大小为1
         if(!_receiver_window_sz){
             _receiver_window_sz = 1;
         }
 
+        // 这个变量被赋值为0只会是因为上一次循环结束后已经填满了接收方窗口
+        //
+        // 当ack_received()方法接收到window_size为0时
+        // 为了让fill_window()符合“当接收方窗口为0时，视为窗口为1，以探测接收方窗口是否开放了新的空间，避免卡死”的行为预期
+        // _receiver_window_sz会被直接赋值为1
         if(*_receiver_window_sz == 0){
             return;
         }
@@ -93,6 +101,7 @@ void TCPSender::fill_window() {
 
         string payload = _stream.read(expected_payload_len);
 
+        // 当窗口中还有剩余空间，并且对输出流的写入已经结束时，才会设置fin标志
         if(_stream.eof() && payload.length() + syn < *_receiver_window_sz){
             fin = 1;
             output_ended = true;
@@ -100,6 +109,9 @@ void TCPSender::fill_window() {
 
         TCPSegment segment = make_segment(seqno, syn, fin, payload);
 
+        // 当出现空的segment时，
+        // 说明对输出流的写入还没到来，没能从stream中读取到有效的字符串，
+        // 此时不应该发送这个空的segment
         if(segment.length_in_sequence_space() == 0){
             return;
         }
@@ -107,15 +119,20 @@ void TCPSender::fill_window() {
         _segments_out.push(segment);
         _outstanding_seg.push(segment);
 
+        // 更新剩余的接收方窗口容量
         _receiver_window_sz = *_receiver_window_sz - segment.length_in_sequence_space();
+
+        // 更新下一个segment的起始序列号
         _next_seqno += segment.length_in_sequence_space();
+
+        // 更新已发送、未被确认的segment的总字节数
         _bytes_in_flight += segment.length_in_sequence_space();
 
+        // 当重传计时器未启动时，启动重传计时器
         if(!_countdown_timer){
             _countdown_timer = _current_retransmission_timeout;
         }
     }
-    //cout<<"isn="<<_isn.raw_value()<<", 发送seqno="<<segment.header().seqno<<endl;
 
 }
 
@@ -135,20 +152,23 @@ bool TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
     // 当接收方window大小不为零的时候，调用fill_window()发送一个新的segment
     //
     // 此外，当ackno是TCPSender尚未发送的segment时，需要返回false
-
     uint64_t abs_ackno = unwrap(ackno, _isn, ack_checkpoint);
 
     bool reflash_timer_flag = false;
 
+    // 接收方ack的序列号是还没发送的序列号
+    // 说明出现错误
     if(abs_ackno > _next_seqno){
         return false;
     }
 
+    // 接收方ack了新的字节
+    // 更新ack_checkpoint
     if(abs_ackno > ack_checkpoint){
         ack_checkpoint = abs_ackno;
     }
     
-
+    // 用一个循环来从_outstanding_seg列表中弹出所有已经被完全ack的segment
     while(1){
         if(_outstanding_seg.empty()){
             break;
@@ -162,21 +182,22 @@ bool TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
         }
 
         _outstanding_seg.pop();
-        //cout<<"isn: "<<_isn.raw_value()<<"弹出 seqno: "<<segment.header().to_string() << endl;
+
         _bytes_in_flight -= segment.length_in_sequence_space();
         reflash_timer_flag = 1;
     }
 
-    //cout<<"isn="<<_isn.raw_value()<<", bytes in flight="<<_bytes_in_flight<<endl;
-
-    //cout<<"isn: "<<_isn.raw_value()<<"下一个outstanding: "<< _outstanding_seg.front().header().to_string() << endl;
-
+    // 当接收方ack了新的segment、并且window大小不为0时
+    // 重置重传计时器
     if(reflash_timer_flag && window_size != 0){
         _current_retransmission_timeout = _initial_retransmission_timeout;
         _countdown_timer = _current_retransmission_timeout;
         _consecutive_retransmissions = 0;
     }
 
+    // 当windows size为0时
+    // 发送新的segment时应该将窗口大小视为1，以探测接收方窗口大小是否发生变化，避免卡死
+    // 同时重传计时器在接收到为0的window size时，又会有特定的行为，需要设置相应的flag以供判断
     if(window_size == 0){
         _receiver_window_sz = 1;
         ack_wdsz_zero_flag = true;
@@ -185,16 +206,13 @@ bool TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
         ack_wdsz_zero_flag = false;
     }
 
+    // 当接收方窗口的右边界右移时，
+    // 更新当前记录的右边界，
+    // 并调用fill_window()发送新的segment
     if(abs_ackno + *_receiver_window_sz > last_recv_window_rboundary){
         last_recv_window_rboundary = abs_ackno + *_receiver_window_sz;
         fill_window();
     }
-
-    //cout << "isn="<< _isn.raw_value() << " in ack_received: rboudary=" << last_recv_window_rboundary << endl;
-    
-    //cout<<"in ack_received, before fill_window: window sz="<< _receiver_window_sz << endl;
-    
-    //cout<<"in ack_received, after fill_window: window sz="<< _receiver_window_sz << endl;
 
     return true;
 }
@@ -210,33 +228,36 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
     //      若计时器没过期
     //          -> 更新计时器的剩余时间
 
-    //cout<<"isn: "<<_isn.raw_value()<<" 重传: ms="<<ms_since_last_tick<<endl;
+    // 当计时器未启动时，启动计时器
     if(!_countdown_timer){
         _countdown_timer = _current_retransmission_timeout - ms_since_last_tick;
         return;
     }
 
+    // 当计时器未过期时，更新计时器的剩余时间
     if(*_countdown_timer > ms_since_last_tick){
         _countdown_timer = *_countdown_timer - ms_since_last_tick;
         return;
     }
 
+    // 当计时器已经过期
+
+    // 若当前接收方的window大小不为0
+    // 增加连续重传计数，并使RTO时间翻倍
     if(!ack_wdsz_zero_flag){
         _consecutive_retransmissions += 1;
         _current_retransmission_timeout = _current_retransmission_timeout * 2;
     }
+
+    // 重新启动计时器
     _countdown_timer = _current_retransmission_timeout;
 
+    // 当重传列表不为空时，重新发送列表中最老的segment
     if(_outstanding_seg.empty()){
-        //cout<<"重传时遇到空队列, isn: "<<_isn.raw_value()<<endl;
         return;
     }
-
-    //cout<<"是不是没到这里, ms:"<<ms_since_last_tick<<endl;
-
     _segments_out.push(_outstanding_seg.front());
 
-    //cout<<"isn: "<<_isn.raw_value()<<" 重传:"<< _outstanding_seg.front().header().to_string() << endl;
     return;
 }
 
