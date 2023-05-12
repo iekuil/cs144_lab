@@ -8,9 +8,8 @@
 #include <parser.hh>
 
 //为了用internet checksum
-#include <util.hh>
-
 #include <iostream>
+#include <util.hh>
 
 // Dummy implementation of a TCP sender
 
@@ -33,9 +32,9 @@ TCPSender::TCPSender(const size_t capacity, const uint16_t retx_timeout, const s
     , _outstanding_seg()
     , _consecutive_retransmissions(0)
     , _bytes_in_flight(0)
-    , _receiver_window_sz(std::nullopt) 
+    , _receiver_window_sz(std::nullopt)
     , _countdown_timer(std::nullopt)
-    , _current_retransmission_timeout(retx_timeout) 
+    , _current_retransmission_timeout(retx_timeout)
     , ack_checkpoint(0)
     , output_ended(false)
     , last_recv_window_rboundary(0)
@@ -62,13 +61,13 @@ void TCPSender::fill_window() {
     // 更新_bytes_in_flight
 
     // 判断即将发送的segment是否超出接收方窗口的右边界
-    if(_receiver_window_sz && (_next_seqno >= last_recv_window_rboundary)){
+    if (_receiver_window_sz && (_next_seqno >= last_recv_window_rboundary)) {
         return;
     }
 
     // 用一个循环把整个窗口填满
-    while(1){
-        if(output_ended){
+    while (1) {
+        if (output_ended) {
             return;
         }
 
@@ -77,14 +76,14 @@ void TCPSender::fill_window() {
         bool syn = 0;
         bool fin = 0;
 
-        if(_next_seqno == 0){
+        if (_next_seqno == 0) {
             syn = 1;
         }
 
         // 在建立连接时，
         // 还没有收到过ack，不知道具体的接收方窗口大小，
         // 此时需要假设窗口大小为1
-        if(!_receiver_window_sz){
+        if (!_receiver_window_sz) {
             _receiver_window_sz = 1;
         }
 
@@ -93,7 +92,7 @@ void TCPSender::fill_window() {
         // 当ack_received()方法接收到window_size为0时
         // 为了让fill_window()符合“当接收方窗口为0时，视为窗口为1，以探测接收方窗口是否开放了新的空间，避免卡死”的行为预期
         // _receiver_window_sz会被直接赋值为1
-        if(*_receiver_window_sz == 0){
+        if (*_receiver_window_sz == 0) {
             return;
         }
 
@@ -102,7 +101,7 @@ void TCPSender::fill_window() {
         string payload = _stream.read(expected_payload_len);
 
         // 当窗口中还有剩余空间，并且对输出流的写入已经结束时，才会设置fin标志
-        if(_stream.eof() && payload.length() + syn < *_receiver_window_sz){
+        if (_stream.eof() && payload.length() + syn < *_receiver_window_sz) {
             fin = 1;
             output_ended = true;
         }
@@ -112,7 +111,7 @@ void TCPSender::fill_window() {
         // 当出现空的segment时，
         // 说明对输出流的写入还没到来，没能从stream中读取到有效的字符串，
         // 此时不应该发送这个空的segment
-        if(segment.length_in_sequence_space() == 0){
+        if (segment.length_in_sequence_space() == 0) {
             return;
         }
 
@@ -129,11 +128,10 @@ void TCPSender::fill_window() {
         _bytes_in_flight += segment.length_in_sequence_space();
 
         // 当重传计时器未启动时，启动重传计时器
-        if(!_countdown_timer){
+        if (!_countdown_timer) {
             _countdown_timer = _current_retransmission_timeout;
         }
     }
-
 }
 
 //! \param ackno The remote receiver's ackno (acknowledgment number)
@@ -158,26 +156,26 @@ bool TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
 
     // 接收方ack的序列号是还没发送的序列号
     // 说明出现错误
-    if(abs_ackno > _next_seqno){
+    if (abs_ackno > _next_seqno) {
         return false;
     }
 
     // 接收方ack了新的字节
     // 更新ack_checkpoint
-    if(abs_ackno > ack_checkpoint){
+    if (abs_ackno > ack_checkpoint) {
         ack_checkpoint = abs_ackno;
     }
-    
+
     // 用一个循环来从_outstanding_seg列表中弹出所有已经被完全ack的segment
-    while(1){
-        if(_outstanding_seg.empty()){
+    while (1) {
+        if (_outstanding_seg.empty()) {
             break;
         }
 
         TCPSegment segment = _outstanding_seg.front();
         uint64_t seg_seqno = unwrap(segment.header().seqno, _isn, ack_checkpoint);
 
-        if(seg_seqno + segment.length_in_sequence_space() > abs_ackno){
+        if (seg_seqno + segment.length_in_sequence_space() > abs_ackno) {
             break;
         }
 
@@ -189,7 +187,7 @@ bool TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
 
     // 当接收方ack了新的segment、并且window大小不为0时
     // 重置重传计时器
-    if(reflash_timer_flag && window_size != 0){
+    if (reflash_timer_flag && window_size != 0) {
         _current_retransmission_timeout = _initial_retransmission_timeout;
         _countdown_timer = _current_retransmission_timeout;
         _consecutive_retransmissions = 0;
@@ -198,10 +196,10 @@ bool TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
     // 当windows size为0时
     // 发送新的segment时应该将窗口大小视为1，以探测接收方窗口大小是否发生变化，避免卡死
     // 同时重传计时器在接收到为0的window size时，又会有特定的行为，需要设置相应的flag以供判断
-    if(window_size == 0){
+    if (window_size == 0) {
         _receiver_window_sz = 1;
         ack_wdsz_zero_flag = true;
-    }else{
+    } else {
         _receiver_window_sz = window_size;
         ack_wdsz_zero_flag = false;
     }
@@ -209,7 +207,7 @@ bool TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
     // 当接收方窗口的右边界右移时，
     // 更新当前记录的右边界，
     // 并调用fill_window()发送新的segment
-    if(abs_ackno + *_receiver_window_sz > last_recv_window_rboundary){
+    if (abs_ackno + *_receiver_window_sz > last_recv_window_rboundary) {
         last_recv_window_rboundary = abs_ackno + *_receiver_window_sz;
         fill_window();
     }
@@ -229,13 +227,13 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
     //          -> 更新计时器的剩余时间
 
     // 当计时器未启动时，启动计时器
-    if(!_countdown_timer){
+    if (!_countdown_timer) {
         _countdown_timer = _current_retransmission_timeout - ms_since_last_tick;
         return;
     }
 
     // 当计时器未过期时，更新计时器的剩余时间
-    if(*_countdown_timer > ms_since_last_tick){
+    if (*_countdown_timer > ms_since_last_tick) {
         _countdown_timer = *_countdown_timer - ms_since_last_tick;
         return;
     }
@@ -244,7 +242,7 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
 
     // 若当前接收方的window大小不为0
     // 增加连续重传计数，并使RTO时间翻倍
-    if(!ack_wdsz_zero_flag){
+    if (!ack_wdsz_zero_flag) {
         _consecutive_retransmissions += 1;
         _current_retransmission_timeout = _current_retransmission_timeout * 2;
     }
@@ -253,7 +251,7 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
     _countdown_timer = _current_retransmission_timeout;
 
     // 当重传列表不为空时，重新发送列表中最老的segment
-    if(_outstanding_seg.empty()){
+    if (_outstanding_seg.empty()) {
         return;
     }
     _segments_out.push(_outstanding_seg.front());
@@ -266,16 +264,16 @@ unsigned int TCPSender::consecutive_retransmissions() const { return _consecutiv
 void TCPSender::send_empty_segment() {
     // 构造一个sequence space的长度为0的segment
     //      即：不包含syn、fin且payload长度为0的segment
-    // 
-    if(output_ended){
-        return;
-    }
+    //
     std::string empty_string;
     TCPSegment empty_segment = make_segment(next_seqno(), 0, 0, empty_string);
     _segments_out.push(empty_segment);
 }
 
-TCPSegment TCPSender::make_segment(const WrappingInt32 &seqno, const bool &syn, const bool &fin, const std::string &payload) {
+TCPSegment TCPSender::make_segment(const WrappingInt32 &seqno,
+                                   const bool &syn,
+                                   const bool &fin,
+                                   const std::string &payload) {
     //      0                   1                   2                   3
     //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
     // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
@@ -295,22 +293,23 @@ TCPSegment TCPSender::make_segment(const WrappingInt32 &seqno, const bool &syn, 
     // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     // |                             data                              |
     // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-    
+
     // 首先需要以string的形式手搓一个header出来
     // 还要注意小端序和大端序的转换
     // 也许可以使用NetUnparser
 
     std::string segment_as_string;
     NetUnparser unparser;
-    unparser.u16(segment_as_string, 0);  //source port留空
-    unparser.u16(segment_as_string, 0);  //dest port留空
-    unparser.u32(segment_as_string, seqno.raw_value()); //用传入的seqno设置seqno
-    unparser.u32(segment_as_string, 0);  //ackno留空
-    unparser.u8(segment_as_string, 5 << 4);  //data offset是20个字节，即5个四字
-    unparser.u8(segment_as_string, static_cast<uint8_t>(fin) | (static_cast<uint8_t>(syn) << 1));    //flag中只设置syn和fin，其他留空
-    unparser.u16(segment_as_string, 0);  // window留空
-    unparser.u16(segment_as_string, 0);  //checksum留空，因为在这里还没有得到能够计算校验和的完整信息
-    unparser.u16(segment_as_string, 0);  //urgent pointer留空
+    unparser.u16(segment_as_string, 0);                  // source port留空
+    unparser.u16(segment_as_string, 0);                  // dest port留空
+    unparser.u32(segment_as_string, seqno.raw_value());  //用传入的seqno设置seqno
+    unparser.u32(segment_as_string, 0);                  // ackno留空
+    unparser.u8(segment_as_string, 5 << 4);              // data offset是20个字节，即5个四字
+    unparser.u8(segment_as_string,
+                static_cast<uint8_t>(fin) | (static_cast<uint8_t>(syn) << 1));  // flag中只设置syn和fin，其他留空
+    unparser.u16(segment_as_string, 0);                                         // window留空
+    unparser.u16(segment_as_string, 0);  // checksum留空，因为在这里还没有得到能够计算校验和的完整信息
+    unparser.u16(segment_as_string, 0);  // urgent pointer留空
     //不设置options字段
     //由于padding的作用是保证header的长度是四字节的整数倍，
     //因此也不需要padding

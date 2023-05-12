@@ -21,6 +21,26 @@ class TCPConnection {
     //! in case the remote TCPConnection doesn't know we've received its whole stream?
     bool _linger_after_streams_finish{true};
 
+    // 返回自从上一次接收到segment以来经过的时间
+    uint64_t _time_since_last_segment_received;
+
+    // 当前tcp连接是否仍处于active状态
+    bool _active_flag;
+
+    // 输入流接收到了fin
+    bool _inbound_fin_received;
+
+    // 输入流接收到了fin，并且接收到的所有segment都已经assemble
+    bool _inbound_assembled;
+
+    // 输出流的fin标志已经发送
+    bool _outbound_fin_sent;
+
+    // 输出流的fin已经被确认了
+    bool _outbound_fin_acked;
+
+    std::optional<uint64_t> _lingered_time;
+
   public:
     //! \name "Input" interface for the writer
     //!@{
@@ -81,7 +101,15 @@ class TCPConnection {
     //!@}
 
     //! Construct a new connection from a configuration
-    explicit TCPConnection(const TCPConfig &cfg) : _cfg{cfg} {}
+    explicit TCPConnection(const TCPConfig &cfg)
+        : _cfg{cfg}
+        , _time_since_last_segment_received(0)
+        , _active_flag(true)
+        , _inbound_fin_received(false)
+        , _inbound_assembled(false)
+        , _outbound_fin_sent(false)
+        , _outbound_fin_acked(false)
+        , _lingered_time(std::nullopt) {}
 
     //! \name construction and destruction
     //! moving is allowed; copying is disallowed; default construction not possible
@@ -94,6 +122,9 @@ class TCPConnection {
     TCPConnection(const TCPConnection &other) = delete;
     TCPConnection &operator=(const TCPConnection &other) = delete;
     //!@}
+
+    // 将TCPSender的segment_out队列中的成员转移到_segment_out队列中
+    void send_segments();
 };
 
 #endif  // SPONGE_LIBSPONGE_TCP_FACTORED_HH
