@@ -1,5 +1,7 @@
 #include "tcp_receiver.hh"
 
+#include <iostream>
+
 // Dummy implementation of a TCP receiver
 
 // For Lab 2, please replace with a real implementation that passes the
@@ -40,7 +42,6 @@ bool TCPReceiver::segment_received(const TCPSegment &seg) {
 
     // 把option从payload中去掉，得到真正的data
     std::string data = seg.payload().copy().substr(data_offset);
-    size_t data_len = data.length();
 
     if (window == 0) {
         window = 1;
@@ -50,11 +51,12 @@ bool TCPReceiver::segment_received(const TCPSegment &seg) {
         seg_seq_len = 1;
     }
 
-    if ((abs_seqno + window > seg_seqno) || (seg_seqno + data_len) > abs_seqno) {
+    if ((abs_seqno + window > seg_seqno) && (seg_seqno + seg.length_in_sequence_space()) > abs_seqno) {
         // 当前seg有落在window中的部分
         // 在大多数情况下，index是seg_seqno - 1
         // 当接收到的syn和data一起出现时，seg_seqno会算错index，得到一个负的index
         // 因此需要seg_seqno - 1 + syn
+
         _reassembler.push_substring(data, seg_seqno - 1 + syn, fin);
 
         // 实际上翻了实验手册之后发现压根就没提option字段和doff的事
