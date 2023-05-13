@@ -228,7 +228,7 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
 
     // 当计时器未启动时，启动计时器
     if (!_countdown_timer) {
-        _countdown_timer = _current_retransmission_timeout - ms_since_last_tick;
+        _countdown_timer = _current_retransmission_timeout - ms_since_last_tick % _current_retransmission_timeout;
         return;
     }
 
@@ -248,7 +248,7 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
     }
 
     // 重新启动计时器
-    _countdown_timer = _current_retransmission_timeout;
+    _countdown_timer = _current_retransmission_timeout - (ms_since_last_tick - *_countdown_timer) % _current_retransmission_timeout;
 
     // 当重传列表不为空时，重新发送列表中最老的segment
     if (_outstanding_seg.empty()) {

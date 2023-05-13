@@ -38,7 +38,8 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
 
             if(!_sender.stream_in().eof()){
                 _linger_after_streams_finish = false;
-            }else if(_outbound_fin_sent && _outbound_fin_acked){
+            }
+            if(_outbound_fin_sent && _outbound_fin_acked && !_linger_after_streams_finish){
                 _active_flag = false;
             }
         }
@@ -53,19 +54,20 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
             // 发出的fin已经被ack了
             _outbound_fin_acked = true;
             if(_inbound_fin_received && _inbound_assembled){
-                if(!_lingered_time){
+                if(!_lingered_time && _linger_after_streams_finish){
                     _lingered_time = 0;
+                }else if(!_linger_after_streams_finish){
+                    _active_flag = false;
                 }
             }
         }
 
-        if (_active_flag && _sender.segments_out().empty()) {
+        if (_active_flag && _sender.segments_out().empty() && seg.length_in_sequence_space() != 0) {
             _sender.send_empty_segment();
         }
     }
-    if(_active_flag){
-        send_segments();
-    }
+    
+    send_segments();
 }
 
 bool TCPConnection::active() const { return _active_flag; }
@@ -81,7 +83,7 @@ size_t TCPConnection::write(const string &data) {
 void TCPConnection::tick(const size_t ms_since_last_tick) {
     _time_since_last_segment_received += ms_since_last_tick;
     _sender.tick(ms_since_last_tick);
-
+    send_segments();
     if(_lingered_time){
         _lingered_time = *_lingered_time + ms_since_last_tick;
         if(*_lingered_time >= 10 * _cfg.rt_timeout){
