@@ -24,6 +24,14 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
     if (!_active_flag) {
         return;
     }
+    if(seg.header().rst){
+        _sender.stream_in().set_error();
+        _receiver.stream_out().set_error();
+        _linger_after_streams_finish = false;
+        _active_flag = false;
+        return;
+    }
+
     _time_since_last_segment_received = 0;
     _receiver.segment_received(seg);
 
@@ -66,7 +74,7 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
             _sender.send_empty_segment();
         }
     }
-    
+
     send_segments();
 }
 
