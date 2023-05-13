@@ -125,6 +125,9 @@ class TCPConnection {
 
     // 将TCPSender的segment_out队列中的成员转移到_segment_out队列中
     void send_segments();
+
+    // 发送RST
+    void reset_connection();
 };
 
 #endif  // SPONGE_LIBSPONGE_TCP_FACTORED_HH

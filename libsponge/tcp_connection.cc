@@ -93,6 +93,9 @@ size_t TCPConnection::write(const string &data) {
 void TCPConnection::tick(const size_t ms_since_last_tick) {
     _time_since_last_segment_received += ms_since_last_tick;
     _sender.tick(ms_since_last_tick);
+    if(_sender.consecutive_retransmissions() > _cfg.MAX_RETX_ATTEMPTS){
+        reset_connection();
+    }
     send_segments();
     if(_lingered_time){
         _lingered_time = *_lingered_time + ms_since_last_tick;
@@ -120,7 +123,7 @@ TCPConnection::~TCPConnection() {
     try {
         if (active()) {
             cerr << "Warning: Unclean shutdown of TCPConnection\n";
-
+            reset_connection();
             // Your code here: need to send a RST segment to the peer
         }
     } catch (const exception &e) {
@@ -143,4 +146,17 @@ void TCPConnection::send_segments() {
         _segments_out.push(seg);
         _sender.segments_out().pop();
     }
+}
+
+void TCPConnection::reset_connection(){
+    queue<TCPSegment> empty;
+    _sender.segments_out().swap(empty);
+
+    _sender.send_empty_segment();
+    _sender.segments_out().front().header().rst = true;
+    send_segments();
+
+    _active_flag = false;
+    _sender.stream_in().set_error();
+    _receiver.stream_out().set_error();
 }

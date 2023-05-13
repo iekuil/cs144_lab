@@ -189,7 +189,12 @@ bool TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
     // 重置重传计时器
     if (reflash_timer_flag && window_size != 0) {
         _current_retransmission_timeout = _initial_retransmission_timeout;
-        _countdown_timer = _current_retransmission_timeout;
+        if(_outstanding_seg.empty()){
+            _countdown_timer = std::nullopt; 
+        }else{
+            _countdown_timer = _current_retransmission_timeout;
+        }
+          
         _consecutive_retransmissions = 0;
     }
 
@@ -248,7 +253,7 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
     }
 
     // 重新启动计时器
-    _countdown_timer = _current_retransmission_timeout - (ms_since_last_tick - *_countdown_timer) % _current_retransmission_timeout;
+    _countdown_timer = _current_retransmission_timeout;
 
     // 当重传列表不为空时，重新发送列表中最老的segment
     if (_outstanding_seg.empty()) {
