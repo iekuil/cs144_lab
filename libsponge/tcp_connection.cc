@@ -70,11 +70,13 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
             }
         }
 
-        if (_active_flag && _sender.segments_out().empty() && seg.length_in_sequence_space() != 0) {
-            _sender.send_empty_segment();
-        }
     }
-
+    if(seg.header().syn && _sender.next_seqno_absolute() == 0){
+        _sender.fill_window();
+    }
+    if (_active_flag && _sender.segments_out().empty() && seg.length_in_sequence_space() != 0) {
+        _sender.send_empty_segment();
+    }
     send_segments();
 }
 
@@ -137,6 +139,7 @@ void TCPConnection::send_segments() {
         if(seg.header().fin){
             _outbound_fin_sent = true;
         }
+        seg.header().win = _receiver.window_size();
         _segments_out.push(seg);
         _sender.segments_out().pop();
     }
