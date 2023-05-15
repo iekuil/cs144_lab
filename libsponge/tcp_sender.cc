@@ -8,7 +8,6 @@
 #include <parser.hh>
 
 //为了用internet checksum
-#include <iostream>
 #include <util.hh>
 
 // Dummy implementation of a TCP sender
@@ -37,7 +36,6 @@ TCPSender::TCPSender(const size_t capacity, const uint16_t retx_timeout, const s
     , _current_retransmission_timeout(retx_timeout)
     , ack_checkpoint(0)
     , output_ended(false)
-    , last_recv_window_rboundary(0)
     , ack_wdsz_zero_flag(false) {}
 
 uint64_t TCPSender::bytes_in_flight() const { return _bytes_in_flight; }
@@ -59,11 +57,6 @@ void TCPSender::fill_window() {
     // 更新_receiver_window_sz
     // 更新_next_seqno
     // 更新_bytes_in_flight
-
-    // 判断即将发送的segment是否超出接收方窗口的右边界
-    if (_receiver_window_sz && (_next_seqno >= last_recv_window_rboundary)) {
-        return;
-    }
 
     // 用一个循环把整个窗口填满
     while (1) {
@@ -152,18 +145,10 @@ bool TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
     // 此外，当ackno是TCPSender尚未发送的segment时，需要返回false
     uint64_t abs_ackno = unwrap(ackno, _isn, ack_checkpoint);
 
-    bool reflash_timer_flag = false;
-
     // 接收方ack的序列号是还没发送的序列号
     // 说明出现错误
     if (abs_ackno > _next_seqno) {
         return false;
-    }
-
-    // 接收方ack了新的字节
-    // 更新ack_checkpoint
-    if (abs_ackno > ack_checkpoint) {
-        ack_checkpoint = abs_ackno;
     }
 
     // 用一个循环来从_outstanding_seg列表中弹出所有已经被完全ack的segment
@@ -182,13 +167,12 @@ bool TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
         _outstanding_seg.pop();
 
         _bytes_in_flight -= segment.length_in_sequence_space();
-        reflash_timer_flag = 1;
     }
 
-    // 当接收方ack了新的segment、并且window大小不为0时
-    // 重置重传计时器
-    if (reflash_timer_flag && window_size != 0) {
-        _current_retransmission_timeout = _initial_retransmission_timeout;
+    // 接收方ack了新的字节
+    // 更新ack_checkpoint
+    if (abs_ackno > ack_checkpoint) {
+         _current_retransmission_timeout = _initial_retransmission_timeout;
         if(_outstanding_seg.empty()){
             _countdown_timer = std::nullopt; 
         }else{
@@ -196,24 +180,26 @@ bool TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
         }
           
         _consecutive_retransmissions = 0;
+        ack_checkpoint = abs_ackno;
     }
 
     // 当windows size为0时
     // 发送新的segment时应该将窗口大小视为1，以探测接收方窗口大小是否发生变化，避免卡死
     // 同时重传计时器在接收到为0的window size时，又会有特定的行为，需要设置相应的flag以供判断
+    uint64_t wdsz;
     if (window_size == 0) {
-        _receiver_window_sz = 1;
+        wdsz = 1;
         ack_wdsz_zero_flag = true;
     } else {
-        _receiver_window_sz = window_size;
+        wdsz = window_size;
         ack_wdsz_zero_flag = false;
     }
 
     // 当接收方窗口的右边界右移时，
     // 更新当前记录的右边界，
     // 并调用fill_window()发送新的segment
-    if (abs_ackno + *_receiver_window_sz > last_recv_window_rboundary) {
-        last_recv_window_rboundary = abs_ackno + *_receiver_window_sz;
+    if (abs_ackno + wdsz > _next_seqno) {
+        _receiver_window_sz = abs_ackno + wdsz - _next_seqno;       
         fill_window();
     }
 

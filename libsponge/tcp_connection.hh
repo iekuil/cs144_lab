@@ -6,6 +6,9 @@
 #include "tcp_sender.hh"
 #include "tcp_state.hh"
 
+// 为每个connection生成随机的tag，debug用
+#include <random>
+
 //! \brief A complete endpoint of a TCP connection
 class TCPConnection {
   private:
@@ -41,7 +44,11 @@ class TCPConnection {
 
     std::optional<uint64_t> _lingered_time;
 
+
   public:
+
+    //size_t random_tag;
+
     //! \name "Input" interface for the writer
     //!@{
 
@@ -110,6 +117,7 @@ class TCPConnection {
         , _outbound_fin_sent(false)
         , _outbound_fin_acked(false)
         , _lingered_time(std::nullopt) {}
+        //, random_tag(std::random_device()()) {}
 
     //! \name construction and destruction
     //! moving is allowed; copying is disallowed; default construction not possible

@@ -44,7 +44,7 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
             // 接收到了fin，并且接收到的所有segment都已经assemble
             _inbound_assembled = true;
 
-            if(!_sender.stream_in().eof()){
+            if(!_outbound_fin_sent){
                 _linger_after_streams_finish = false;
             }
             if(_outbound_fin_sent && _outbound_fin_acked && !_linger_after_streams_finish){
@@ -133,7 +133,6 @@ TCPConnection::~TCPConnection() {
 
 void TCPConnection::send_segments() {
     while (!_sender.segments_out().empty()) {
-        // cout << "segment" << endl;
         TCPSegment seg = _sender.segments_out().front();
         if (_receiver.ackno()) {
             seg.header().ack = true;
@@ -153,7 +152,7 @@ void TCPConnection::reset_connection(){
     _sender.segments_out().swap(empty);
 
     _sender.send_empty_segment();
-    _sender.segments_out().front().header().rst = true;
+    _sender.segments_out().back().header().rst = true;
     send_segments();
 
     _active_flag = false;
