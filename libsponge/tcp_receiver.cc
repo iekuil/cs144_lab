@@ -41,7 +41,12 @@ bool TCPReceiver::segment_received(const TCPSegment &seg) {
     size_t data_offset = (seg.header().doff - 5) * 4;
 
     // 把option从payload中去掉，得到真正的data
-    std::string data = seg.payload().copy().substr(data_offset);
+    std::string data;
+    if (data_offset < seg.payload().copy().length()) {
+        data = seg.payload().copy().substr(data_offset);
+    } else {
+        data = seg.payload().copy();
+    }
 
     if (window == 0) {
         window = 1;

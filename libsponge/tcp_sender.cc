@@ -172,13 +172,13 @@ bool TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
     // 接收方ack了新的字节
     // 更新ack_checkpoint
     if (abs_ackno > ack_checkpoint) {
-         _current_retransmission_timeout = _initial_retransmission_timeout;
-        if(_outstanding_seg.empty()){
-            _countdown_timer = std::nullopt; 
-        }else{
+        _current_retransmission_timeout = _initial_retransmission_timeout;
+        if (_outstanding_seg.empty()) {
+            _countdown_timer = std::nullopt;
+        } else {
             _countdown_timer = _current_retransmission_timeout;
         }
-          
+
         _consecutive_retransmissions = 0;
         ack_checkpoint = abs_ackno;
     }
@@ -199,7 +199,7 @@ bool TCPSender::ack_received(const WrappingInt32 ackno, const uint16_t window_si
     // 更新当前记录的右边界，
     // 并调用fill_window()发送新的segment
     if (abs_ackno + wdsz > _next_seqno) {
-        _receiver_window_sz = abs_ackno + wdsz - _next_seqno;       
+        _receiver_window_sz = abs_ackno + wdsz - _next_seqno;
         fill_window();
     }
 

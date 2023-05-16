@@ -21,10 +21,13 @@ size_t TCPConnection::unassembled_bytes() const { return _receiver.unassembled_b
 size_t TCPConnection::time_since_last_segment_received() const { return _time_since_last_segment_received; }
 
 void TCPConnection::segment_received(const TCPSegment &seg) {
+    // 当前连接已关闭
     if (!_active_flag) {
         return;
     }
-    if(seg.header().rst){
+
+    // 接收到RST -> 关闭连接
+    if (seg.header().rst) {
         _sender.stream_in().set_error();
         _receiver.stream_out().set_error();
         _linger_after_streams_finish = false;
@@ -44,10 +47,10 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
             // 接收到了fin，并且接收到的所有segment都已经assemble
             _inbound_assembled = true;
 
-            if(!_outbound_fin_sent){
+            if (!_outbound_fin_sent) {
                 _linger_after_streams_finish = false;
             }
-            if(_outbound_fin_sent && _outbound_fin_acked && !_linger_after_streams_finish){
+            if (_outbound_fin_sent && _outbound_fin_acked && !_linger_after_streams_finish) {
                 _active_flag = false;
             }
         }
@@ -58,20 +61,19 @@ void TCPConnection::segment_received(const TCPSegment &seg) {
         // 当sender发出一个fin之后，
         // next_seqno不会再被更新，
         // 可以以next_seqno - 1作为fin的seqno
-        if(_outbound_fin_sent && _sender.bytes_in_flight() == 0){
+        if (_outbound_fin_sent && _sender.bytes_in_flight() == 0) {
             // 发出的fin已经被ack了
             _outbound_fin_acked = true;
-            if(_inbound_fin_received && _inbound_assembled){
-                if(!_lingered_time && _linger_after_streams_finish){
+            if (_inbound_fin_received && _inbound_assembled) {
+                if (!_lingered_time && _linger_after_streams_finish) {
                     _lingered_time = 0;
-                }else if(!_linger_after_streams_finish){
+                } else if (!_linger_after_streams_finish) {
                     _active_flag = false;
                 }
             }
         }
-
     }
-    if(seg.header().syn && _sender.next_seqno_absolute() == 0){
+    if (seg.header().syn && _sender.next_seqno_absolute() == 0) {
         _sender.fill_window();
     }
     if (_active_flag && _sender.segments_out().empty() && seg.length_in_sequence_space() != 0) {
@@ -93,13 +95,13 @@ size_t TCPConnection::write(const string &data) {
 void TCPConnection::tick(const size_t ms_since_last_tick) {
     _time_since_last_segment_received += ms_since_last_tick;
     _sender.tick(ms_since_last_tick);
-    if(_sender.consecutive_retransmissions() > _cfg.MAX_RETX_ATTEMPTS){
+    if (_sender.consecutive_retransmissions() > _cfg.MAX_RETX_ATTEMPTS) {
         reset_connection();
     }
     send_segments();
-    if(_lingered_time){
+    if (_lingered_time) {
         _lingered_time = *_lingered_time + ms_since_last_tick;
-        if(*_lingered_time >= 10 * _cfg.rt_timeout){
+        if (*_lingered_time >= 10 * _cfg.rt_timeout) {
             _active_flag = false;
         }
     }
@@ -124,7 +126,6 @@ TCPConnection::~TCPConnection() {
         if (active()) {
             cerr << "Warning: Unclean shutdown of TCPConnection\n";
             reset_connection();
-            // Your code here: need to send a RST segment to the peer
         }
     } catch (const exception &e) {
         std::cerr << "Exception destructing TCP FSM: " << e.what() << std::endl;
@@ -138,7 +139,7 @@ void TCPConnection::send_segments() {
             seg.header().ack = true;
             seg.header().ackno = *(_receiver.ackno());
         }
-        if(seg.header().fin){
+        if (seg.header().fin) {
             _outbound_fin_sent = true;
         }
         seg.header().win = _receiver.window_size();
@@ -147,7 +148,7 @@ void TCPConnection::send_segments() {
     }
 }
 
-void TCPConnection::reset_connection(){
+void TCPConnection::reset_connection() {
     queue<TCPSegment> empty;
     _sender.segments_out().swap(empty);
 
