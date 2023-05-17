@@ -234,7 +234,6 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
     // 若当前接收方的window大小不为0
     // 增加连续重传计数，并使RTO时间翻倍
     if (!ack_wdsz_zero_flag) {
-        _consecutive_retransmissions += 1;
         _current_retransmission_timeout = _current_retransmission_timeout * 2;
     }
 
@@ -246,6 +245,7 @@ void TCPSender::tick(const size_t ms_since_last_tick) {
         return;
     }
     _segments_out.push(_outstanding_seg.front());
+    _consecutive_retransmissions += 1;
 
     return;
 }

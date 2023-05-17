@@ -110,7 +110,6 @@ class TCPConnection {
         , _outbound_fin_sent(false)
         , _outbound_fin_acked(false)
         , _lingered_time(std::nullopt) {}
-    //, random_tag(std::random_device()()) {}
 
     //! \name construction and destruction
     //! moving is allowed; copying is disallowed; default construction not possible

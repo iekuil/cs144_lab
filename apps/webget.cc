@@ -1,4 +1,4 @@
-#include "socket.hh"
+#include "tcp_sponge_socket.hh"
 #include "util.hh"
 
 #include <cstdlib>
@@ -17,7 +17,7 @@ void get_URL(const string &host, const string &path) {
     // (not just one call to read() -- everything) until you reach
     // the "eof" (end of file).
 
-    TCPSocket sock;
+    CS144TCPSocket sock;
 
     // 连接到远端主机
     sock.connect(Address(host, "http"));
@@ -34,6 +34,9 @@ void get_URL(const string &host, const string &path) {
     while (!sock.eof()) {
         cout << sock.read();
     }
+
+    // lab4完成后添加的代码
+    sock.wait_until_closed();
 
     // 没有实现具体的函数代码时默认的函数模板
     // cerr << "Function called: get_URL(" << host << ", " << path << ").\n";
