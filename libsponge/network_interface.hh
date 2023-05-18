@@ -5,8 +5,36 @@
 #include "tcp_over_ip.hh"
 #include "tun.hh"
 
+#include "arp_message.hh"
+
 #include <optional>
 #include <queue>
+
+// queue不能遍历，
+// 我需要一个能遍历的容器来存储待处理的frame和本地ARP缓存
+#include <list>
+
+#define TIME_OUT 30 * 1000
+
+class Mapping{
+  public:
+    EthernetAddress ethernet_address;
+    Address ip_address;
+    size_t timer;
+  
+  Mapping(const EthernetAddress &eth_addr, const Address &ip_addr, const size_t &ms): ethernet_address(eth_addr), ip_address(ip_addr), timer(ms) {}
+};
+
+class Bucket{
+  private:
+    Address ip_address;
+    std::queue<EthernetFrame> todo_list;
+
+  public:
+    Bucket(const Address &ip_addr): ip_address(ip_addr), todo_list() {};
+    std::queue<EthernetFrame>& get_todo_list() {return todo_list;}
+    Address& get_ip() {return ip_address;};
+};
 
 //! \brief A "network interface" that connects IP (the internet layer, or network layer)
 //! with Ethernet (the network access layer, or link layer).
@@ -40,6 +68,12 @@ class NetworkInterface {
     //! outbound queue of Ethernet frames that the NetworkInterface wants sent
     std::queue<EthernetFrame> _frames_out{};
 
+    // 存储那些ARP缓存中没有对应地址的、待发送的frame
+    std::list<Bucket> todo_list;
+
+    // 存储ARP映射对的本地缓存
+    std::list<Mapping> ARP_cache;
+
   public:
     //! \brief Construct a network interface with given Ethernet (network-access-layer) and IP (internet-layer) addresses
     NetworkInterface(const EthernetAddress &ethernet_address, const Address &ip_address);
@@ -62,6 +96,24 @@ class NetworkInterface {
 
     //! \brief Called periodically when time elapses
     void tick(const size_t ms_since_last_tick);
+
+    // 构造frame
+    EthernetFrame make_frame(const BufferList &payload, const uint16_t &type);
+
+    // 构造ARP请求
+    ARPMessage make_ARPmessage(const Address &target_ip, const std::optional<EthernetAddress> &target_mac);
+
+    // 查询ARP缓存
+    std::optional<EthernetAddress> search_ARPcache(const Address &target_ip);
+
+    // 刷新ARP表项
+    void insert_ARPcache(const Address &ip, const EthernetAddress &mac);
+
+    // 插入todo_list
+    bool insert_todolist(const Address &ip, const EthernetFrame &frame);
+
+    // 从todo_list中发送符合相应地址的frame
+    void send_from_todolist(const Address &ip, const EthernetAddress &mac);
 };
 
 #endif  // SPONGE_LIBSPONGE_NETWORK_INTERFACE_HH
