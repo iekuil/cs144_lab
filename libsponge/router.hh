@@ -6,6 +6,23 @@
 #include <optional>
 #include <queue>
 
+class Rule {
+  private:
+    uint32_t _route_prefix;
+    uint8_t _prefix_length;
+    std::optional<Address> _next_hop;
+    size_t _interface_num;
+
+  public:
+    Rule(const uint32_t &prefix, const uint8_t prefix_len, const std::optional<Address> &hop_ip, const size_t &if_num)
+        : _route_prefix(prefix), _prefix_length(prefix_len), _next_hop(hop_ip), _interface_num(if_num){};
+
+    const uint32_t &route_prefix() { return _route_prefix; };
+    const uint8_t &prefix_length() { return _prefix_length; };
+    const std::optional<Address> &next_hop() { return _next_hop; };
+    const size_t &interface_num() { return _interface_num; };
+};
+
 //! \brief A wrapper for NetworkInterface that makes the host-side
 //! interface asynchronous: instead of returning received datagrams
 //! immediately (from the `recv_frame` method), it stores them for
@@ -49,7 +66,12 @@ class Router {
     //! datagram's destination address.
     void route_one_datagram(InternetDatagram &dgram);
 
+    // 路由规则表
+    std::vector<Rule> _rules_table;
+
   public:
+    Router() : _rules_table() {}
+
     //! Add an interface to the router
     //! \param[in] interface an already-constructed network interface
     //! \returns The index of the interface after it has been added to the router
@@ -69,6 +91,8 @@ class Router {
 
     //! Route packets between the interfaces
     void route();
+
+    bool match(const uint32_t &route_prefix, const uint8_t &prefix_length, const uint32_t &dst_ip);
 };
 
 #endif  // SPONGE_LIBSPONGE_ROUTER_HH

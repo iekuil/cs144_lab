@@ -29,14 +29,56 @@ void Router::add_route(const uint32_t route_prefix,
     cerr << "DEBUG: adding route " << Address::from_ipv4_numeric(route_prefix).ip() << "/" << int(prefix_length)
          << " => " << (next_hop.has_value() ? next_hop->ip() : "(direct)") << " on interface " << interface_num << "\n";
 
-    DUMMY_CODE(route_prefix, prefix_length, next_hop, interface_num);
     // Your code here.
+    Rule route_rule(route_prefix, prefix_length, next_hop, interface_num);
+    _rules_table.push_back(route_rule);
+    return;
 }
 
 //! \param[in] dgram The datagram to be routed
 void Router::route_one_datagram(InternetDatagram &dgram) {
-    DUMMY_CODE(dgram);
     // Your code here.
+
+    // 当datagram的ttl已经为0、或者这一次转发之后将降到0时，
+    // 需要丢弃掉这个datagram
+    if ((dgram.header().ttl == 0) || (dgram.header().ttl == 1)) {
+        return;
+    }
+
+    dgram.header().ttl -= 1;
+
+    uint32_t dst_ip = dgram.header().dst;
+
+    std::optional<uint64_t> matched_rule_num(std::nullopt);
+
+    for (uint64_t i = 0; i < _rules_table.size(); i++) {
+        if (match(_rules_table[i].route_prefix(), _rules_table[i].prefix_length(), dst_ip)) {
+            if (!matched_rule_num) {
+                matched_rule_num = i;
+            } else if (_rules_table[i].prefix_length() > _rules_table[*matched_rule_num].prefix_length()) {
+                matched_rule_num = i;
+            }
+        }
+    }
+
+    // 没有匹配的路由规则，
+    // 选择丢弃该datagram
+    if (!matched_rule_num) {
+        return;
+    }
+
+    // 确定下一跳ip地址：
+    //   当路由规则中有指定的下一跳地址时，使用该地址；
+    //   否则认为下一跳地址位于路由规则对应网卡所在的目标子网中，以datagram中的目的地址作为下一跳地址
+    Address next_hop("0.0.0.0");
+    if (_rules_table[*matched_rule_num].next_hop()) {
+        next_hop = *(_rules_table[*matched_rule_num].next_hop());
+    } else {
+        next_hop = next_hop.from_ipv4_numeric(dgram.header().dst);
+    }
+
+    _interfaces[_rules_table[*matched_rule_num].interface_num()].send_datagram(dgram, next_hop);
+    return;
 }
 
 void Router::route() {
@@ -47,5 +89,15 @@ void Router::route() {
             route_one_datagram(queue.front());
             queue.pop();
         }
+    }
+}
+
+bool Router::match(const uint32_t &route_prefix, const uint8_t &prefix_length, const uint32_t &ip) {
+    if (prefix_length == 0) {
+        return true;
+    } else if ((route_prefix >> (32 - prefix_length)) == (ip >> (32 - prefix_length))) {
+        return true;
+    } else {
+        return false;
     }
 }
