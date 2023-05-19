@@ -1,11 +1,10 @@
 #ifndef SPONGE_LIBSPONGE_NETWORK_INTERFACE_HH
 #define SPONGE_LIBSPONGE_NETWORK_INTERFACE_HH
 
+#include "arp_message.hh"
 #include "ethernet_frame.hh"
 #include "tcp_over_ip.hh"
 #include "tun.hh"
-
-#include "arp_message.hh"
 
 #include <optional>
 #include <queue>
@@ -16,24 +15,26 @@
 
 #define TIME_OUT 30 * 1000
 
-class Mapping{
+class Mapping {
   public:
     EthernetAddress ethernet_address;
     Address ip_address;
     size_t timer;
-  
-  Mapping(const EthernetAddress &eth_addr, const Address &ip_addr, const size_t &ms): ethernet_address(eth_addr), ip_address(ip_addr), timer(ms) {}
+
+    Mapping(const EthernetAddress &eth_addr, const Address &ip_addr, const size_t &ms)
+        : ethernet_address(eth_addr), ip_address(ip_addr), timer(ms) {}
 };
 
-class Bucket{
+class Bucket {
   private:
     Address ip_address;
     std::queue<EthernetFrame> todo_list;
 
   public:
-    Bucket(const Address &ip_addr): ip_address(ip_addr), todo_list() {};
-    std::queue<EthernetFrame>& get_todo_list() {return todo_list;}
-    Address& get_ip() {return ip_address;};
+    size_t timer;
+    Bucket(const Address &ip_addr) : ip_address(ip_addr), todo_list(), timer(0){};
+    std::queue<EthernetFrame> &get_todo_list() { return todo_list; }
+    Address &get_ip() { return ip_address; };
 };
 
 //! \brief A "network interface" that connects IP (the internet layer, or network layer)
@@ -100,7 +101,7 @@ class NetworkInterface {
     // 构造frame
     EthernetFrame make_frame(const BufferList &payload, const uint16_t &type);
 
-    // 构造ARP请求
+    // 构造ARP报文
     ARPMessage make_ARPmessage(const Address &target_ip, const std::optional<EthernetAddress> &target_mac);
 
     // 查询ARP缓存
@@ -110,10 +111,13 @@ class NetworkInterface {
     void insert_ARPcache(const Address &ip, const EthernetAddress &mac);
 
     // 插入todo_list
-    bool insert_todolist(const Address &ip, const EthernetFrame &frame);
+    void insert_todolist(const Address &ip, const EthernetFrame &frame);
 
     // 从todo_list中发送符合相应地址的frame
     void send_from_todolist(const Address &ip, const EthernetAddress &mac);
+
+    // 构造并发送ARP请求
+    void send_ARP_request(const Address &target_ip);
 };
 
 #endif  // SPONGE_LIBSPONGE_NETWORK_INTERFACE_HH
